@@ -413,7 +413,7 @@ export default function MaterialsPage() {
                     </div>
                     {/* Иконка удаления */}
                     <button
-                      onClick={(e) => handleDeleteVideo(e, videoTitle)}
+                      onClick={(e) => showDeleteConfirm(e, videoTitle)}
                       className="absolute top-2 right-2 w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-100 transition-opacity duration-200"
                       title="Удалить видео"
                     >
