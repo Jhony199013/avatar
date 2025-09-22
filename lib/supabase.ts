@@ -25,3 +25,9 @@ export interface Voice {
   name: string
   created_at: string
 }
+
+export interface Video {
+  id: number // bigint в базе данных
+  video_name: string // название видео
+  created_at: string
+}

@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import { FileText, Trash2 } from "lucide-react"
 import { MaterialCreator } from "@/components/material-creator"
-import { supabase, type PhotoAvatar, type Voice } from "@/lib/supabase"
+import { supabase, type PhotoAvatar, type Voice, type Video } from "@/lib/supabase"
 import Link from "next/link"
 import {
   AlertDialog,
@@ -23,14 +23,90 @@ interface VideoFile {
   lastModified?: Date
 }
 
+// Мемоизированный компонент для готового видео
+const VideoCard = React.memo(({ video, onDelete }: { video: VideoFile, onDelete: (videoName: string) => void }) => {
+  const videoTitle = video.name.replace('.mp4', '')
+  
+  return (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden relative group">
+      <div className="aspect-video bg-gray-100 relative">
+        <video
+          key={video.name}
+          className="w-full h-full object-cover"
+          poster=""
+          controls
+          preload="metadata"
+        >
+          <source src={video.url} type="video/mp4" />
+          Ваш браузер не поддерживает видео.
+        </video>
+        {/* Иконка удаления */}
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onDelete(video.name)
+          }}
+          className="absolute top-2 right-2 w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-100 transition-opacity duration-200 z-50"
+          title="Удалить видео"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="p-4">
+        <h3 className="font-medium text-gray-900 truncate mb-2">{videoTitle}</h3>
+      </div>
+    </div>
+  )
+})
+
+// Мемоизированный компонент для видео в процессе загрузки
+const PendingVideoCard = React.memo(({ videoTitle, progress, onDelete }: { videoTitle: string, progress: number, onDelete: (videoName: string) => void }) => {
+  return (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden relative group">
+      <div className="aspect-video bg-gray-100 relative flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <div className="text-gray-600 text-sm">Генерация видео...</div>
+        </div>
+        {/* Иконка удаления */}
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onDelete(videoTitle)
+          }}
+          className="absolute top-2 right-2 w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-100 transition-opacity duration-200"
+          title="Удалить видео"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="p-4">
+        <h3 className="font-medium text-gray-900 truncate mb-2">{videoTitle}</h3>
+        <div className="text-sm text-gray-500 mb-2">Загрузка</div>
+        {/* Прогресс-бар */}
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div 
+            className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+            style={{ width: `${progress}%` }}
+          ></div>
+        </div>
+        <div className="text-xs text-gray-400 mt-1 text-right">
+          {Math.round(progress)}%
+        </div>
+      </div>
+    </div>
+  )
+})
+
 function MaterialsPage() {
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false)
   const [avatars, setAvatars] = useState<PhotoAvatar[]>([])
   const [voices, setVoices] = useState<Voice[]>([])
+  const [videos, setVideos] = useState<Video[]>([])
   const [videoFiles, setVideoFiles] = useState<VideoFile[]>([])
   const [isLoadingVideos, setIsLoadingVideos] = useState(true)
-  const [trackedVideos, setTrackedVideos] = useState<string[]>([])
-  const [isCheckingVideos, setIsCheckingVideos] = useState(false)
   const [pendingVideos, setPendingVideos] = useState<string[]>([])
   const [videoProgress, setVideoProgress] = useState<Record<string, number>>({})
   const [videoTimers, setVideoTimers] = useState<Record<string, NodeJS.Timeout>>({})
@@ -128,52 +204,68 @@ function MaterialsPage() {
     }
   }
 
-  // Функция для проверки всех отслеживаемых видео
-  const checkTrackedVideos = async () => {
-    if (trackedVideos.length === 0) return
-    
-    setIsCheckingVideos(true)
-    try {
-      const existingVideos: VideoFile[] = []
-      const stillPending: string[] = []
-      
-      for (const videoTitle of trackedVideos) {
-        const exists = await checkVideoExists(videoTitle)
-        if (exists) {
-          existingVideos.push({
-            name: videoTitle, // videoTitle уже содержит .mp4
-            url: `https://s3.regru.cloud/avatars13/video_avatars/${encodeURIComponent(videoTitle)}`
-          })
-          // Устанавливаем прогресс на 100% когда видео найдено
-          setVideoComplete(videoTitle)
-        } else {
-          stillPending.push(videoTitle)
-          // Запускаем прогресс для видео, которое еще не найдено
-          if (!videoProgress[videoTitle] && !videoTimers[videoTitle]) {
-            startVideoProgress(videoTitle)
-          }
-        }
-      }
-      
-      setVideoFiles(existingVideos)
-      setPendingVideos(stillPending)
-    } catch (error) {
-      console.error('Ошибка при проверке отслеживаемых видео:', error)
-    } finally {
-      setIsCheckingVideos(false)
-    }
-  }
 
   const fetchVideoFiles = async () => {
     try {
       setIsLoadingVideos(true)
       
-      // Проверяем отслеживаемые видео
-      if (trackedVideos.length > 0) {
-        await checkTrackedVideos()
+      // Загружаем видео из базы данных
+      const { data: videosData, error: videosError } = await supabase
+        .from("video")
+        .select("*")
+        .order("created_at", { ascending: false })
+
+      if (videosError) {
+        console.error("[v0] Ошибка загрузки видео:", videosError)
       } else {
-        // Если нет отслеживаемых видео, показываем пустой список
-        setVideoFiles([])
+        setVideos(videosData || [])
+        
+        // Проверяем существование видеофайлов для каждого названия из базы
+        const existingVideos: VideoFile[] = []
+        const stillPending: string[] = []
+        
+        for (const video of videosData || []) {
+          const exists = await checkVideoExists(video.video_name)
+          if (exists) {
+            existingVideos.push({
+              name: video.video_name,
+              url: `https://s3.regru.cloud/avatars13/video_avatars/${encodeURIComponent(video.video_name)}`
+            })
+          } else {
+            stillPending.push(video.video_name)
+            // Запускаем прогресс для видео, которое еще не найдено
+            if (!videoProgress[video.video_name] && !videoTimers[video.video_name]) {
+              startVideoProgress(video.video_name)
+            }
+          }
+        }
+        
+        // Обновляем только если есть изменения, чтобы избежать перерендеринга
+        setVideoFiles(prev => {
+          const prevNames = prev.map(v => v.name).sort()
+          const newNames = existingVideos.map(v => v.name).sort()
+          
+          // Если списки одинаковые, не обновляем
+          if (prevNames.length === newNames.length && 
+              prevNames.every((name, index) => name === newNames[index])) {
+            return prev
+          }
+          
+          return existingVideos
+        })
+        
+        setPendingVideos(prev => {
+          const prevSorted = [...prev].sort()
+          const newSorted = [...stillPending].sort()
+          
+          // Если списки одинаковые, не обновляем
+          if (prevSorted.length === newSorted.length && 
+              prevSorted.every((name, index) => name === newSorted[index])) {
+            return prev
+          }
+          
+          return stillPending
+        })
       }
     } catch (error) {
       console.error("[v0] Ошибка при загрузке видеофайлов:", error)
@@ -182,49 +274,7 @@ function MaterialsPage() {
     }
   }
 
-  // Загружаем отслеживаемые видео из localStorage при загрузке
-  useEffect(() => {
-    const savedTrackedVideos = localStorage.getItem('trackedVideos')
-    if (savedTrackedVideos) {
-      try {
-        const parsed = JSON.parse(savedTrackedVideos)
-        setTrackedVideos(parsed)
-        
-        // Загружаем времена начала для каждого видео
-        const startTimes: Record<string, number> = {}
-        parsed.forEach((videoTitle: string) => {
-          const savedStartTime = localStorage.getItem(`videoStartTime_${videoTitle}`)
-          if (savedStartTime) {
-            startTimes[videoTitle] = parseInt(savedStartTime)
-          }
-        })
-        setVideoStartTimes(startTimes)
-      } catch (error) {
-        console.error('Ошибка при загрузке отслеживаемых видео:', error)
-      }
-    }
-  }, [])
-
-  // Периодическая проверка видео каждые 10 секунд
-  useEffect(() => {
-    if (trackedVideos.length === 0) return
-
-    const interval = setInterval(() => {
-      checkTrackedVideos()
-    }, 10000) // 10 секунд
-
-    return () => clearInterval(interval)
-  }, [trackedVideos])
-
-  // Очистка таймеров при размонтировании компонента
-  useEffect(() => {
-    return () => {
-      Object.values(videoTimers).forEach(timer => {
-        if (timer) clearInterval(timer)
-      })
-    }
-  }, [videoTimers])
-
+  // Загружаем данные при загрузке компонента
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -260,26 +310,85 @@ function MaterialsPage() {
     }
 
     fetchData()
-  }, [trackedVideos])
+  }, [])
 
-  const handleMaterialCreated = (videoTitle?: string) => {
+  // Периодическая проверка видео каждые 30 секунд (только для pending видео)
+  useEffect(() => {
+    if (pendingVideos.length === 0) return
+
+    const interval = setInterval(() => {
+      // Проверяем только pending видео, чтобы не сбрасывать воспроизведение готовых
+      const checkPendingVideos = async () => {
+        const existingVideos: VideoFile[] = []
+        const stillPending: string[] = []
+        
+        for (const videoTitle of pendingVideos) {
+          const exists = await checkVideoExists(videoTitle)
+          if (exists) {
+            existingVideos.push({
+              name: videoTitle,
+              url: `https://s3.regru.cloud/avatars13/video_avatars/${encodeURIComponent(videoTitle)}`
+            })
+            setVideoComplete(videoTitle)
+          } else {
+            stillPending.push(videoTitle)
+          }
+        }
+        
+        // Обновляем только если есть изменения
+        if (existingVideos.length > 0) {
+          setVideoFiles(prev => [...prev, ...existingVideos])
+        }
+        
+        if (stillPending.length !== pendingVideos.length) {
+          setPendingVideos(stillPending)
+        }
+      }
+      
+      checkPendingVideos()
+    }, 30000) // 30 секунд
+
+    return () => clearInterval(interval)
+  }, [pendingVideos])
+
+  // Очистка таймеров при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      Object.values(videoTimers).forEach(timer => {
+        if (timer) clearInterval(timer)
+      })
+    }
+  }, [videoTimers])
+
+
+  const handleMaterialCreated = async (videoTitle?: string) => {
     setIsMaterialModalOpen(false)
     
     if (videoTitle) {
-      // Добавляем новое видео в отслеживание
-      const newTrackedVideos = [...trackedVideos, videoTitle]
-      setTrackedVideos(newTrackedVideos)
-      
-      // Добавляем в pending (ожидающие загрузки)
-      setPendingVideos(prev => [...prev, videoTitle])
-      
-      // Запускаем прогресс для нового видео
-      startVideoProgress(videoTitle)
-      
-      // Сохраняем в localStorage
-      localStorage.setItem('trackedVideos', JSON.stringify(newTrackedVideos))
-      
-      console.log("[v0] Материал успешно создан, добавлено в отслеживание:", videoTitle)
+      try {
+        // Записываем видео в базу данных
+        const { data, error } = await supabase
+          .from("video")
+          .insert([{ video_name: videoTitle }])
+          .select()
+
+        if (error) {
+          console.error("[v0] Ошибка при записи видео в базу данных:", error)
+        } else {
+          console.log("[v0] Видео успешно записано в базу данных:", data)
+          
+          // Обновляем список видео
+          setVideos(prev => [...prev, ...(data || [])])
+          
+          // Добавляем в pending (ожидающие загрузки)
+          setPendingVideos(prev => [...prev, videoTitle])
+          
+          // Запускаем прогресс для нового видео
+          startVideoProgress(videoTitle)
+        }
+      } catch (error) {
+        console.error("[v0] Ошибка при записи видео в базу данных:", error)
+      }
     } else {
       console.log("[v0] Материал успешно создан")
     }
@@ -294,32 +403,38 @@ function MaterialsPage() {
     setDeleteConfirmModal({isOpen: true, videoTitle})
   }
 
-  const handleDeleteVideo = (videoTitle: string) => {
-    // Останавливаем прогресс и очищаем таймеры
-    stopVideoProgress(videoTitle)
-    setVideoProgress(prev => {
-      const newProgress = { ...prev }
-      delete newProgress[videoTitle]
-      return newProgress
-    })
-    
-    // Удаляем из отслеживания
-    const newTrackedVideos = trackedVideos.filter(title => title !== videoTitle)
-    setTrackedVideos(newTrackedVideos)
-    
-    // Удаляем из pending
-    setPendingVideos(prev => prev.filter(title => title !== videoTitle))
-    
-    // Удаляем из готовых видео (videoTitle уже содержит .mp4)
-    setVideoFiles(prev => prev.filter(video => video.name !== videoTitle))
-    
-    // Обновляем localStorage
-    localStorage.setItem('trackedVideos', JSON.stringify(newTrackedVideos))
+  const handleDeleteVideo = async (videoTitle: string) => {
+    try {
+      // Удаляем из базы данных
+      const { error } = await supabase
+        .from("video")
+        .delete()
+        .eq("video_name", videoTitle)
+
+      if (error) {
+        console.error("[v0] Ошибка при удалении видео из базы данных:", error)
+      } else {
+        console.log("[v0] Видео успешно удалено из базы данных:", videoTitle)
+        
+        // Останавливаем прогресс и очищаем таймеры
+        stopVideoProgress(videoTitle)
+        setVideoProgress(prev => {
+          const newProgress = { ...prev }
+          delete newProgress[videoTitle]
+          return newProgress
+        })
+        
+        // Удаляем из состояния
+        setVideos(prev => prev.filter(video => video.video_name !== videoTitle))
+        setPendingVideos(prev => prev.filter(title => title !== videoTitle))
+        setVideoFiles(prev => prev.filter(video => video.name !== videoTitle))
+      }
+    } catch (error) {
+      console.error("[v0] Ошибка при удалении видео:", error)
+    }
     
     // Закрываем попап
     setDeleteConfirmModal({isOpen: false, videoTitle: ''})
-    
-    console.log("[v0] Видео удалено из отслеживания:", videoTitle)
   }
 
   const cancelDelete = () => {
@@ -371,70 +486,24 @@ function MaterialsPage() {
         ) : videoFiles.length > 0 || pendingVideos.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
             {/* Отображаем готовые видео */}
-            {videoFiles.map((video, index) => {
-              const videoTitle = video.name.replace('.mp4', '')
-              return (
-                <div key={`ready-${index}`} className="bg-white rounded-lg shadow-md overflow-hidden relative group">
-                  <div className="aspect-video bg-gray-100 relative">
-                    <video
-                      className="w-full h-full object-cover"
-                      poster=""
-                      controls
-                      preload="metadata"
-                    >
-                      <source src={video.url} type="video/mp4" />
-                      Ваш браузер не поддерживает видео.
-                    </video>
-                    {/* Иконка удаления */}
-                    <button
-                      onClick={(e) => showDeleteConfirm(e, video.name)}
-                      className="absolute top-2 right-2 w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-100 transition-opacity duration-200 z-50"
-                      title="Удалить видео"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-medium text-gray-900 truncate mb-2">{videoTitle}</h3>
-                  </div>
-                </div>
-              )
-            })}
+            {videoFiles.map((video) => (
+              <VideoCard 
+                key={`ready-${video.name}`}
+                video={video} 
+                onDelete={(videoName) => showDeleteConfirm({ preventDefault: () => {}, stopPropagation: () => {} } as any, videoName)} 
+              />
+            ))}
             
             {/* Отображаем видео в процессе загрузки */}
-            {pendingVideos.map((videoTitle, index) => {
+            {pendingVideos.map((videoTitle) => {
               const progress = videoProgress[videoTitle] || 0
               return (
-                <div key={`pending-${index}`} className="bg-white rounded-lg shadow-md overflow-hidden relative group">
-                  <div className="aspect-video bg-gray-100 relative flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
-                      <div className="text-gray-600 text-sm">Генерация видео...</div>
-                    </div>
-                    {/* Иконка удаления */}
-                    <button
-                      onClick={(e) => showDeleteConfirm(e, videoTitle)}
-                      className="absolute top-2 right-2 w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-100 transition-opacity duration-200"
-                      title="Удалить видео"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-medium text-gray-900 truncate mb-2">{videoTitle}</h3>
-                    <div className="text-sm text-gray-500 mb-2">Загрузка</div>
-                    {/* Прогресс-бар */}
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
-                        style={{ width: `${progress}%` }}
-                      ></div>
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1 text-right">
-                      {Math.round(progress)}%
-                    </div>
-                  </div>
-                </div>
+                <PendingVideoCard 
+                  key={`pending-${videoTitle}`}
+                  videoTitle={videoTitle}
+                  progress={progress}
+                  onDelete={(videoName) => showDeleteConfirm({ preventDefault: () => {}, stopPropagation: () => {} } as any, videoName)}
+                />
               )
             })}
           </div>
