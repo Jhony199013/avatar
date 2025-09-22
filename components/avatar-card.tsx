@@ -5,20 +5,24 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, Trash2, Eye } from "lucide-react"
+import { Loader2, Trash2, Eye, Edit2, Check, X } from "lucide-react"
 import { supabase, type PhotoAvatar } from "@/lib/supabase"
 
 interface AvatarCardProps {
   avatar: PhotoAvatar
   onDelete?: (avatarId: number) => void
+  onNameUpdate?: (avatarId: number, newName: string) => void
 }
 
-export function AvatarCard({ avatar: initialAvatar, onDelete }: AvatarCardProps) {
+export function AvatarCard({ avatar: initialAvatar, onDelete, onNameUpdate }: AvatarCardProps) {
   const [avatar, setAvatar] = useState<PhotoAvatar>(initialAvatar)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showPreviewDialog, setShowPreviewDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editingName, setEditingName] = useState(avatar.name)
+  const [isUpdatingName, setIsUpdatingName] = useState(false)
 
   useEffect(() => {
     if (avatar.status !== "done") {
@@ -84,6 +88,51 @@ export function AvatarCard({ avatar: initialAvatar, onDelete }: AvatarCardProps)
     }
   }
 
+  const handleStartEdit = () => {
+    setIsEditingName(true)
+    setEditingName(avatar.name)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditingName(false)
+    setEditingName(avatar.name)
+  }
+
+  const handleSaveName = async () => {
+    if (!editingName.trim()) return
+    
+    setIsUpdatingName(true)
+    try {
+      const response = await fetch('/api/update-avatar-name', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: avatar.id,
+          name: editingName.trim()
+        })
+      })
+
+      if (response.ok) {
+        const updatedAvatar = { ...avatar, name: editingName.trim() }
+        setAvatar(updatedAvatar)
+        setIsEditingName(false)
+        
+        // Уведомляем родительский компонент об обновлении
+        if (onNameUpdate) {
+          onNameUpdate(avatar.id, editingName.trim())
+        }
+      } else {
+        console.error('Ошибка при обновлении названия аватара')
+      }
+    } catch (error) {
+      console.error('Ошибка при обновлении названия аватара:', error)
+    } finally {
+      setIsUpdatingName(false)
+    }
+  }
+
   return (
     <Card className="w-full max-w-sm">
       <CardContent className="p-6">
@@ -132,6 +181,7 @@ export function AvatarCard({ avatar: initialAvatar, onDelete }: AvatarCardProps)
               </div>
             )}
             
+            
             {/* Иконка корзины появляется только при наведении */}
             {avatar.status === "done" && (
               <div 
@@ -151,7 +201,59 @@ export function AvatarCard({ avatar: initialAvatar, onDelete }: AvatarCardProps)
             )}
           </div>
           <div className="text-center">
-            <h3 className="font-semibold text-foreground">{avatar.name}</h3>
+            {isEditingName ? (
+              <div className="flex items-center gap-1 max-w-full">
+                <input
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  className="flex-1 px-2 py-1 text-sm border rounded min-w-0"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveName()
+                    } else if (e.key === 'Escape') {
+                      handleCancelEdit()
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSaveName}
+                  disabled={isUpdatingName || !editingName.trim()}
+                  className="bg-blue-600 hover:bg-blue-700 h-7 w-7 p-0"
+                >
+                  {isUpdatingName ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Check className="w-3 h-3" />
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  disabled={isUpdatingName}
+                  className="border-gray-300 hover:bg-gray-50 h-7 w-7 p-0"
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2">
+                <h3 className="font-semibold text-foreground">{avatar.name}</h3>
+                {avatar.status === "done" && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleStartEdit}
+                    className="h-6 w-6 p-0 hover:bg-gray-100"
+                  >
+                    <Edit2 className="w-3 h-3 text-gray-500 hover:text-gray-700" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </CardContent>

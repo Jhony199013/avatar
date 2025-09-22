@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { Play, Pause, Volume2, Trash2 } from "lucide-react"
+import { Play, Pause, Volume2, Trash2, Edit2, Check, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
@@ -9,14 +9,18 @@ import type { Voice } from "@/lib/supabase"
 
 interface VoiceCardProps {
   voice: Voice
+  onNameUpdate?: (voiceId: number, newName: string) => void
 }
 
-export function VoiceCard({ voice }: VoiceCardProps) {
+export function VoiceCard({ voice, onNameUpdate }: VoiceCardProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editingName, setEditingName] = useState(voice.name)
+  const [isUpdatingName, setIsUpdatingName] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const handlePlayPause = async () => {
@@ -80,6 +84,49 @@ export function VoiceCard({ voice }: VoiceCardProps) {
     }
   }
 
+  const handleStartEdit = () => {
+    setIsEditingName(true)
+    setEditingName(voice.name)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditingName(false)
+    setEditingName(voice.name)
+  }
+
+  const handleSaveName = async () => {
+    if (!editingName.trim()) return
+    
+    setIsUpdatingName(true)
+    try {
+      const response = await fetch('/api/update-voice-name', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: voice.id,
+          name: editingName.trim()
+        })
+      })
+
+      if (response.ok) {
+        setIsEditingName(false)
+        
+        // Уведомляем родительский компонент об обновлении
+        if (onNameUpdate) {
+          onNameUpdate(voice.id, editingName.trim())
+        }
+      } else {
+        console.error('Ошибка при обновлении названия голоса')
+      }
+    } catch (error) {
+      console.error('Ошибка при обновлении названия голоса:', error)
+    } finally {
+      setIsUpdatingName(false)
+    }
+  }
+
   const isProcessing = voice.status === "processing"
 
   return (
@@ -88,6 +135,7 @@ export function VoiceCard({ voice }: VoiceCardProps) {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      
       {/* Иконка корзины при наведении */}
       {!isProcessing && (
         <div 
@@ -125,7 +173,59 @@ export function VoiceCard({ voice }: VoiceCardProps) {
 
           {/* Название голоса */}
           <div className="text-center">
-            <h3 className="font-semibold text-lg text-gray-900">{voice.name}</h3>
+            {isEditingName ? (
+              <div className="flex items-center gap-0.5 max-w-full px-1">
+                <input
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  className="flex-1 px-2 py-1.5 text-sm border rounded min-w-0"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveName()
+                    } else if (e.key === 'Escape') {
+                      handleCancelEdit()
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSaveName}
+                  disabled={isUpdatingName || !editingName.trim()}
+                  className="bg-purple-600 hover:bg-purple-700 h-6 w-6 p-0"
+                >
+                  {isUpdatingName ? (
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  ) : (
+                    <Check className="w-2.5 h-2.5" />
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  disabled={isUpdatingName}
+                  className="border-gray-300 hover:bg-gray-50 h-6 w-6 p-0"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2">
+                <h3 className="font-semibold text-lg text-gray-900">{voice.name}</h3>
+                {!isProcessing && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleStartEdit}
+                    className="h-6 w-6 p-0 hover:bg-gray-100"
+                  >
+                    <Edit2 className="w-3 h-3 text-gray-500 hover:text-gray-700" />
+                  </Button>
+                )}
+              </div>
+            )}
             <p className="text-sm text-gray-500 mt-1">{isProcessing ? "Обработка..." : "Готов"}</p>
           </div>
 

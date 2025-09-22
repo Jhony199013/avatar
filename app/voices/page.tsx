@@ -79,6 +79,16 @@ function VoicesPage() {
     setTimeout(checkForNewVoice, 2000)
   }
 
+  const handleVoiceNameUpdate = (voiceId: number, newName: string) => {
+    setVoices(prev => 
+      prev.map(voice => 
+        voice.id === voiceId 
+          ? { ...voice, name: newName }
+          : voice
+      )
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto">
@@ -142,7 +152,11 @@ function VoicesPage() {
             ))}
 
             {voices.map((voice) => (
-              <VoiceCard key={voice.id} voice={voice} />
+              <VoiceCard 
+                key={voice.id} 
+                voice={voice} 
+                onNameUpdate={handleVoiceNameUpdate}
+              />
             ))}
 
             {voices.length === 0 && tempVoices.length === 0 && (

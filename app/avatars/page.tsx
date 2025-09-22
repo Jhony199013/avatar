@@ -104,6 +104,16 @@ function AvatarsPage() {
     }
   }
 
+  const handleAvatarNameUpdate = (avatarId: number, newName: string) => {
+    setAvatars(prev => 
+      prev.map(avatar => 
+        avatar.id === avatarId 
+          ? { ...avatar, name: newName }
+          : avatar
+      )
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto">
@@ -164,7 +174,12 @@ function AvatarsPage() {
             ))}
 
             {avatars.map((avatar) => (
-              <AvatarCard key={avatar.id} avatar={avatar} onDelete={handleDeleteAvatar} />
+              <AvatarCard 
+                key={avatar.id} 
+                avatar={avatar} 
+                onDelete={handleDeleteAvatar}
+                onNameUpdate={handleAvatarNameUpdate}
+              />
             ))}
 
             {avatars.length === 0 && tempAvatars.length === 0 && (
