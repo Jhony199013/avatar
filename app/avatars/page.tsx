@@ -1,10 +1,3 @@
-import type { Metadata } from 'next'
-
-export const metadata: Metadata = {
-  title: 'Аватары | Avatars App',
-  description: 'Управление аватарами для создания видео',
-}
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -14,7 +7,7 @@ import { AvatarCard } from "@/components/avatar-card"
 import { supabase, type PhotoAvatar } from "@/lib/supabase"
 import Link from "next/link"
 
-export default function AvatarsPage() {
+function AvatarsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [avatars, setAvatars] = useState<PhotoAvatar[]>([])
   const [loading, setLoading] = useState(true)
@@ -203,4 +196,6 @@ export default function AvatarsPage() {
     </div>
   )
 }
+
+export default AvatarsPage
 

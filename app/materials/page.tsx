@@ -1,10 +1,3 @@
-import type { Metadata } from 'next'
-
-export const metadata: Metadata = {
-  title: 'Материал | Avatars App',
-  description: 'Создание и управление видео материалами',
-}
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -30,7 +23,7 @@ interface VideoFile {
   lastModified?: Date
 }
 
-export default function MaterialsPage() {
+function MaterialsPage() {
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false)
   const [avatars, setAvatars] = useState<PhotoAvatar[]>([])
   const [voices, setVoices] = useState<Voice[]>([])
@@ -488,3 +481,5 @@ export default function MaterialsPage() {
     </div>
   )
 }
+
+export default MaterialsPage

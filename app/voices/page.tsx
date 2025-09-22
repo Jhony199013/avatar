@@ -1,10 +1,3 @@
-import type { Metadata } from 'next'
-
-export const metadata: Metadata = {
-  title: 'Голоса | Avatars App',
-  description: 'Управление голосами для озвучивания видео',
-}
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -14,7 +7,7 @@ import { VoiceCard } from "@/components/voice-card"
 import { supabase, type Voice } from "@/lib/supabase"
 import Link from "next/link"
 
-export default function VoicesPage() {
+function VoicesPage() {
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false)
   const [voices, setVoices] = useState<Voice[]>([])
   const [voicesLoading, setVoicesLoading] = useState(true)
@@ -170,4 +163,6 @@ export default function VoicesPage() {
     </div>
   )
 }
+
+export default VoicesPage
 
