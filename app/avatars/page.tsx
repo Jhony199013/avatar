@@ -1,3 +1,10 @@
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: 'Аватары | Avatars App',
+  description: 'Управление аватарами для создания видео',
+}
+
 "use client"
 
 import { useState, useEffect } from "react"
